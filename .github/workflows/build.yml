@@ -1,0 +1,64 @@
+name: Build JAR
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Extract source ZIP if needed
+        run: |
+          find . -type f -name "*.zip" \
+            ! -path "./.git/*" \
+            -exec unzip -o {} -d extracted-source \;
+
+      - name: Find Gradle project
+        id: project
+        run: |
+          FILE=$(find . -type f \( \
+            -name gradlew -o \
+            -name build.gradle -o \
+            -name build.gradle.kts \
+          \) ! -path "./.git/*" \
+            ! -path "./.github/*" | head -n 1)
+
+          if [ -z "$FILE" ]; then
+            echo "ERROR: No Gradle project found."
+            exit 1
+          fi
+
+          DIR=$(dirname "$FILE")
+          echo "dir=$DIR" >> "$GITHUB_OUTPUT"
+          echo "Found project in: $DIR"
+
+      - name: Build JAR
+        working-directory: ${{ steps.project.outputs.dir }}
+        run: |
+          if [ -f ./gradlew ]; then
+            chmod +x ./gradlew
+            ./gradlew build --no-daemon
+          else
+            gradle build --no-daemon
+          fi
+
+      - name: Upload JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: Silk-JAR
+          path: |
+            **/build/libs/*.jar
+          if-no-files-found: error
